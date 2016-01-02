@@ -23,7 +23,7 @@ For more infor
 """
 import struct
 import sys
-import os.path
+#import os.path
 import numpy as np 
 import matplotlib.pyplot as plt
 
@@ -31,41 +31,40 @@ class gamma_data:
     def __init__(self,filename='A1_0_5cm.Chn', mca_bins=4096):
         
         try:
-            self.infile = open(filename, "rb")
+            self.infile         = open(filename, "rb")
             self.read_chn_binary(mca_bins)
-        except:
+        except ValueError:
             print('Unable to load file ' + filename)
+
      
     def read_chn_binary(self,mca_bins):       # We start by reading the 32 byte header
-        self.version = struct.unpack('h', self.infile.read(2))[0]
-        self.mca_detector_id = struct.unpack('h', self.infile.read(2))[0]
-        self.segment_number = struct.unpack('h', self.infile.read(2))[0]
-        self.start_time_ss =  self.infile.read(2)
-        self.real_time = struct.unpack('I', self.infile.read(4))[0]
-        self.live_time = struct.unpack('I', self.infile.read(4))[0]
-        self.start_date = self.infile.read(8) #Ascii type date in DDMMMYY* where * == 1 means 
-                             #21th century
-        self.start_time_hhmm = self.infile.read(4)
-        self.chan_offset = struct.unpack('h', self.infile.read(2))[0]
-        self.no_channels = struct.unpack('h', self.infile.read(2))[0]
+        self.version            = struct.unpack('h', self.infile.read(2))[0]
+        self.mca_detector_id    = struct.unpack('h', self.infile.read(2))[0]
+        self.segment_number     = struct.unpack('h', self.infile.read(2))[0]
+        self.start_time_ss      = self.infile.read(2)
+        self.real_time          = struct.unpack('I', self.infile.read(4))[0]
+        self.live_time          = struct.unpack('I', self.infile.read(4))[0]
+        self.start_date         = self.infile.read(8) #Ascii type date in 
+                                #DDMMMYY* where * == 1 means 21th century
+        self.start_time_hhmm    = self.infile.read(4)
+        self.chan_offset        = struct.unpack('h', self.infile.read(2))[0]
+        self.no_channels        = struct.unpack('h', self.infile.read(2))[0]    
+        self.hist_array         = np.zeros(mca_bins) #Init hist_array 
         
-        #Read the spectrum data        
-        self.hist_array = np.zeros(mca_bins)
+        #Read the binary data
         for index in range(len(self.hist_array)):
             self.hist_array[index]= struct.unpack('I', self.infile.read(4))[0]
-            print(self.hist_array[index])
         self.infile.close()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':   
     if len(sys.argv) >1:
         filename = sys.argv[1]
     else: 
         filename = raw_input('Filename of binary, (including .bin): ')
-        gamma_object = gamma_data(filename)
-        if not gamma_object.version:
-            print('Problwem')
-        x = range(len(gamma_object.hist_array))
-        plt.step(x, gamma_object.hist_array)
-        plt.show()
+    gamma_object = gamma_data(filename)
+   
+    x = range(len(gamma_object.hist_array))
+    plt.step(x, gamma_object.hist_array)
+    plt.show()
  
