@@ -10,6 +10,7 @@ import sys
 from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import spectrum_analysis as sa
 import read_chn
 import numpy as np
 
@@ -45,6 +46,7 @@ class MyMplCanvas(FigureCanvas):
 class MyStaticMplCanvas(MyMplCanvas):
     def compute_initial_figure(self):    
         self.axes.plot()
+        
        
 
 
@@ -65,10 +67,13 @@ class ApplicationWindow(QtGui.QMainWindow):
         self.file_menu.addAction('&Load spectrum', self.file_load_spec)
         self.file_menu.addAction('&Export spectrum', self.file_load_spec)
         self.analysis_menu.addAction('&Zoom', self.activate_zoom)
+        self.analysis_menu.addAction('&Find Roi', self.find_roi)
+
         self.analysis_menu.addAction('&Logartihmic', self.logarithmic)
         self.main_widget    = QtGui.QWidget(self)
         l                   = QtGui.QHBoxLayout(self.main_widget)
         self.sc             = MyStaticMplCanvas(self.main_widget, width=100, height=6, dpi=100)
+        self.zoom()
         self.slider         = QtGui.QSlider(self.main_widget)
         
         
@@ -79,9 +84,10 @@ class ApplicationWindow(QtGui.QMainWindow):
            
     def file_load_spec(self):
         self.file_name      = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");    
-        array               = load_spec(self.file_name)
-        x = np.arange(len(array))
-        self.sc.axes.step(x,array) #TODO: Make sure the step setup is okey! 
+        self.array          = load_spec(self.file_name)
+        self.ymax           = np.max(self.array)      
+        x = np.arange(len(self.array))
+        self.sc.axes.step(x,self.array)#TODO: Make sure the step setup is okey! 
         self.sc.draw()
         
     def activate_zoom(self): 
@@ -94,22 +100,36 @@ class ApplicationWindow(QtGui.QMainWindow):
     def on_release(self, release):
         self.sc.zoom_point2 = [release.xdata,release.ydata]
         #Put control for too small values 
-        self.zoom(np.sort([self.sc.zoom_point2[0],self.sc.zoom_point1[0]]),np.sort([self.sc.zoom_point2[1],self.sc.zoom_point1[1]]))
-        
+        if np.abs(self.sc.zoom_point2[0]-self.sc.zoom_point1[0]) > 100 and np.abs(self.sc.zoom_point2[1]-self.sc.zoom_point1[1])>100:
+            self.zoom(np.sort([self.sc.zoom_point2[0],self.sc.zoom_point1[0]]),np.sort([self.sc.zoom_point2[1],self.sc.zoom_point1[1]]))
+        else: 
+            self.zoom()
+        self.sc.mpl_disconnect(self.cid_click)
+        self.sc.mpl_disconnect(self.cid_release)
+
 
     def logarithmic(self):
         self.sc.axes.set_yscale('log')
         self.sc.draw()
         
         
-    def zoom(self,x_limits, y_limits):
+    def zoom(self,x_limits=[0,4096], y_limits=[0,-1]):
+         if y_limits[1] == -1:
+             if 'self.ymax' in vars():    
+                 y_limits[1]=self.ymax*1.2
+             else:
+                 y_limits[1] = 5000
          self.sc.axes.set_xlim(x_limits[0], x_limits[1])
          self.sc.axes.set_ylim(y_limits[0], y_limits[1])
          self.sc.draw()
-         self.sc.mpl_disconnect(self.cid_click)
-         self.sc.mpl_disconnect(self.cid_release)
-
-
+        
+    def find_roi(self):
+        #The Second time you activate this the plot disappears
+        self.rois = sa.peak_finder(self.array)
+        self.sc.axes.hold()
+        self.sc.axes.scatter(self.rois, self.array[self.rois],marker='x',c='r',s=40)
+        self.sc.draw()
+        self.zoom()        
 
 
 

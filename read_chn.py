@@ -23,6 +23,7 @@ For more infor
 """
 import struct
 import sys
+import spectrum_analysis as sa
 #import os.path
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     gamma_object = gamma_data(filename)
    
     x = range(len(gamma_object.hist_array))
-    plt.step(x, gamma_object.hist_array)
-    plt.show()
+    sa.peak_finder(gamma_object.hist_array)
+#    plt.step(x, gamma_object.hist_array)
+#    plt.show()
  
