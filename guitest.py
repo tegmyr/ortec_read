@@ -10,18 +10,47 @@ import sys
 from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import spectrum_analysis as sa
-import read_chn
+import fit_peak
+import read_chn2
 import numpy as np
+# ==== parameters, these will be stored in a separate file === 
+color_hist = 'b'
+color_bg_hist = 'r'
+filled_hist = False
+filled_bg_hist = False
+spectrum_cal_slope = 1
+spectrum_cal_offset = 0
+bg_cal_slope = 1
+bg_cal_offset = 0
 
 
+# =================================================
 
 
 def load_spec(fname):    
-    spec_obj    = read_chn.gamma_data(fname)
+    spec_obj    = read_chn2.gamma_data(fname)
     spec_array  = spec_obj.hist_array
-    #Make some nice way to access the other properties from spec_obj, like a dictionary
-    return spec_array
+    spec_time   = spec_obj.real_time   
+    spec_array_step = np.append(0,spec_array)
+    x = np.arange(len(spec_array))
+    x_step = np.arange(len(spec_array)+1)-0.5   
+    en = x*spec_obj.en_slope + spec_obj.en_zero_inter + x**2*spec_obj.en_quad
+    en_step = x_step*spec_obj.en_slope + spec_obj.en_zero_inter + x_step**2*spec_obj.en_quad
+    return spec_array, spec_array_step, en, en_step, spec_time
+
+
+#def x_from_en(energies):
+#    exes = np.zeros(len(energies),dtype=np.int16)
+#    for i, en in enumerate(energies):
+#        p = spec_obj.en_slope/spec_obj.en_quad
+#        q = (spec_obj.en_zero_inter - en)/spec_obj.en_quad
+#        a = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
+#        if a <= spec_obj.no_channels:
+#            exes[i] = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
+#        
+#    return exes
 
 class MyMplCanvas(FigureCanvas):
     #Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.).
@@ -55,6 +84,67 @@ class ApplicationWindow(QtGui.QMainWindow):
         QtGui.QMainWindow.__init__(self)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         #=== Menubar === 
+        self.setup_menu_bar()
+        # Setup actions! 
+        peak_find_action = QtGui.QAction('Find Peaks',self)      
+        peak_find_action.setShortcut('Ctrl+f')
+        peak_find_action.triggered.connect(self.find_roi)
+        
+        zoom_out_action = QtGui.QAction('Zoom Out',self) 
+        zoom_out_action.triggered.connect(self.zoom_out)
+        
+        zoom_action =  QtGui.QAction('Zoom',self) 
+        zoom_action.setShortcut('z')
+        zoom_action.triggered.connect(self.activate_zoom)
+        
+#        self.toolbar = self.addToolBar('Zoom out')
+       
+        
+        toggle_lin_log_action = QtGui.QAction('Log',self)
+        toggle_lin_log_action.triggered.connect(self.logarithmic)
+
+        self.toolbar = self.addToolBar('Find peak')
+        self.toolbar.addAction(peak_find_action)
+        self.toolbar.addAction(zoom_out_action)
+        self.toolbar.addAction(zoom_action)
+        self.toolbar.addAction(toggle_lin_log_action)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+                
+                
+        
+        
+        
+        
+        
+        self.main_widget    = QtGui.QWidget(self)
+        l                   = QtGui.QHBoxLayout(self.main_widget)
+        self.sc             = MyStaticMplCanvas(self.main_widget, width=100, height=6, dpi=100)
+#        self.zoom()
+        self.slider         = QtGui.QSlider(self.main_widget)
+        
+        
+        
+        l.addWidget(self.sc)
+        l.addWidget(self.slider)
+        self.main_widget.setFocus()
+        self.setCentralWidget(self.main_widget)
+        self.ymax = 5000 
+        self.x_limits=[0,8192]
+        self.y_limits=[0.1,]
+           
+           
+           
+         
+#    def setup_toolbar(self):
+    def setup_menu_bar(self):
         self.menuBar        = QtGui.QMenuBar()
         self.file_menu      = QtGui.QMenu('&File', self)
         self.settings_menu  = QtGui.QMenu('&Settings', self)
@@ -68,29 +158,64 @@ class ApplicationWindow(QtGui.QMainWindow):
         self.file_menu.addAction('&Export spectrum', self.file_load_spec)
         self.analysis_menu.addAction('&Zoom', self.activate_zoom)
         self.analysis_menu.addAction('&Find Roi', self.find_roi)
-
+        self.analysis_menu.addAction('&Load background spectrum', self.file_load_background)      
         self.analysis_menu.addAction('&Logartihmic', self.logarithmic)
-        self.main_widget    = QtGui.QWidget(self)
-        l                   = QtGui.QHBoxLayout(self.main_widget)
-        self.sc             = MyStaticMplCanvas(self.main_widget, width=100, height=6, dpi=100)
-        self.zoom()
-        self.slider         = QtGui.QSlider(self.main_widget)
         
         
-        l.addWidget(self.sc)
-        l.addWidget(self.slider)
-        self.main_widget.setFocus()
-        self.setCentralWidget(self.main_widget)
-           
+        
+        
     def file_load_spec(self):
-        self.file_name      = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");    
-        self.array          = load_spec(self.file_name)
-        self.ymax           = np.max(self.array)      
-        x = np.arange(len(self.array))
-        self.sc.axes.step(x,self.array)#TODO: Make sure the step setup is okey! 
+        self.file_name  = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");           
+        self.array,self.array_step, self.en, self.en_step, self.spectrum_time  = load_spec(self.file_name)
+        self.x_limits = [0,self.en_step[-1]]
+        self.y_limits = [0.1, np.max(self.array)*1.2 ]
+        self.draw_spectrums()
+#        x = np.arange(len(self.array))
+#        self.sc.axes.step(x,self.array,c=color_hist)#TODO: Make sure the step setup is okey! 
+#        self.sc.draw()
+        
+    def file_load_background(self):
+        self.file_name_bg      = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");    
+        self.bg_spec,self.bg_time          = load_spec(self.file_name_bg)
+        self.ymax           = np.max(self.bg_spec)      
+        self.draw_spectrums()
+        
+    def draw_spectrums(self):     
+        if hasattr(self,'bg_spec') and hasattr(self,'array')  :
+            x_bg = np.arange(len(self.bg_spec))
+            time_factor = self.spectrum_time/float(self.bg_time)
+            self.sc.axes.step(x_bg,1.2*time_factor*self.bg_spec,c=color_bg_hist)#TODO: Make sure the step setup is okey! 
+            self.sc.axes.hold(True)
+  
+   
+            print self.bg_time
+        if hasattr(self,'array') :  
+            self.sc.axes.step(self.en_step,self.array_step,c=color_hist)#TODO: Make sure the step setup is okey! 
+            print self.spectrum_time
+           #self.sc.axes.hold(False)
+#       try: 
+#           
+#           self.sc.axes.step(x,self.array-self.bg_spec,c='g')
+#       except:
+#           print "Did not work"
+        self.sc.axes.set_xlim(self.x_limits[0],self.x_limits[1])
+        self.sc.axes.set_ylim(self.y_limits[0], self.y_limits[1])        
         self.sc.draw()
+
+       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
     def activate_zoom(self): 
+        #TODO: Draw rectangle when zooming   
         self.cid_click = self.sc.mpl_connect('button_press_event', self.on_click)
         self.cid_release = self.sc.mpl_connect('button_release_event', self.on_release)
    
@@ -100,40 +225,61 @@ class ApplicationWindow(QtGui.QMainWindow):
     def on_release(self, release):
         self.sc.zoom_point2 = [release.xdata,release.ydata]
         #Put control for too small values 
-        if np.abs(self.sc.zoom_point2[0]-self.sc.zoom_point1[0]) > 100 and np.abs(self.sc.zoom_point2[1]-self.sc.zoom_point1[1])>100:
+        if np.abs(self.sc.zoom_point2[0]-self.sc.zoom_point1[0]) > 10 and np.abs(self.sc.zoom_point2[1]-self.sc.zoom_point1[1])>10:
             self.zoom(np.sort([self.sc.zoom_point2[0],self.sc.zoom_point1[0]]),np.sort([self.sc.zoom_point2[1],self.sc.zoom_point1[1]]))
-        else: 
-            self.zoom()
         self.sc.mpl_disconnect(self.cid_click)
         self.sc.mpl_disconnect(self.cid_release)
 
 
     def logarithmic(self):
         self.sc.axes.set_yscale('log')
-        self.sc.draw()
+        self.sc.draw()  
+    def zoom_out(self):
+        self.zoom([0,self.en_step[-1]],[0.1, np.max(self.array)*1.2 ])
         
-        
-    def zoom(self,x_limits=[0,4096], y_limits=[0,-1]):
-         if y_limits[1] == -1:
-             if 'self.ymax' in vars():    
-                 y_limits[1]=self.ymax*1.2
-             else:
-                 y_limits[1] = 5000
-         self.sc.axes.set_xlim(x_limits[0], x_limits[1])
-         self.sc.axes.set_ylim(y_limits[0], y_limits[1])
-         self.sc.draw()
+    def zoom(self,xlimits, ylimits):
+        self.x_limits = xlimits
+        self.y_limits = ylimits
+        print self.x_limits 
+        self.draw_spectrums()
         
     def find_roi(self):
         #The Second time you activate this the plot disappears
         self.rois = sa.peak_finder(self.array)
         self.sc.axes.hold()
-        self.sc.axes.scatter(self.rois, self.array[self.rois],marker='x',c='r',s=40)
-        self.sc.draw()
-        self.zoom()        
+        self.sc.axes.scatter(self.en[self.rois], self.array[self.rois],marker='x',c='r',s=40)
+        self.draw_spectrums()
+        
+#    def x_from_en(self,energies):
+#        exes = np.zeros(len(energies),dtype=np.int16)
+#        for i, en in enumerate(energies):
+#            p = self.
+#            spec_obj.en_slope/spec_obj.en_quad
+#            q = (spec_obj.en_zero_inter - en)/spec_obj.en_quad
+#            a = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
+#            if a <= spec_obj.no_channels:
+#                exes[i] = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
+#            
+#        return exes
 
+    def fit_peak(self, en_low=500, en_high=520):
+        rang = np.linspace(en_low,en_high)
+        plt.figure(3)
+        
 
-
-
+        #plt.step(rang,spec_obj.hist_array[rang], c=color_hist)
+        plt.scatter(rang,self.array[rang])
+        plt.ylim(ymin=1)
+        print fit_peak.fit_the_peak(rang,self.array[rang])
+        coeff, var_matrix, hist_fit = fit_peak.fit_the_peak(rang,self.array[rang])
+        plt.plot(rang, hist_fit)
+        
+        
+        zero_crossing = 300-1.75*2220
+#        plt.plot(rang,en[rang]*1.75 + zero_crossing)
+        plt.show()
+        
+        
 
 
 
