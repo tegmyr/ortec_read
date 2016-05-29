@@ -3,6 +3,26 @@
 """
 Created on Sat Jan  2 15:48:20 2016
 
+ TODO: read_chn reads the .chn file header correctly. The number of channels 
+       can now be accessed and used instead of being set manually. This is not  
+       done yet though.
+ 
+ TODO: The find_peak function does not find all peaks. Find better way to 
+       determine  what is a peak. 
+       
+ TODO: Implement peakfitting and background subtraction from peaks. 
+ 
+ Idea for end guesser. 
+ I want to create the functionality that given peak areas, efficiency curve 
+ and connectivity to DB, get a fairly good guess what kind of nuclide and thus 
+ also the activity. 
+ 
+ 
+
+
+
+
+
 @author: Oscar Tegmyr
 oscar.tegmyr@gmail.com
 """
@@ -13,7 +33,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import spectrum_analysis as sa
 import fit_peak
-import read_chn2
+import read_chn
 import numpy as np
 # ==== parameters, these will be stored in a separate file === 
 color_hist = 'b'
@@ -25,12 +45,24 @@ spectrum_cal_offset = 0
 bg_cal_slope = 1
 bg_cal_offset = 0
 
+# ================
 
-# =================================================
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def load_spec(fname):    
-    spec_obj    = read_chn2.gamma_data(fname)
+    spec_obj    = read_chn.gamma_data(fname)
     spec_array  = spec_obj.hist_array
     spec_time   = spec_obj.real_time   
     spec_array_step = np.append(0,spec_array)
@@ -39,18 +71,6 @@ def load_spec(fname):
     en = x*spec_obj.en_slope + spec_obj.en_zero_inter + x**2*spec_obj.en_quad
     en_step = x_step*spec_obj.en_slope + spec_obj.en_zero_inter + x_step**2*spec_obj.en_quad
     return spec_array, spec_array_step, en, en_step, spec_time
-
-
-#def x_from_en(energies):
-#    exes = np.zeros(len(energies),dtype=np.int16)
-#    for i, en in enumerate(energies):
-#        p = spec_obj.en_slope/spec_obj.en_quad
-#        q = (spec_obj.en_zero_inter - en)/spec_obj.en_quad
-#        a = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
-#        if a <= spec_obj.no_channels:
-#            exes[i] = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
-#        
-#    return exes
 
 class MyMplCanvas(FigureCanvas):
     #Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.).
@@ -97,9 +117,6 @@ class ApplicationWindow(QtGui.QMainWindow):
         zoom_action.setShortcut('z')
         zoom_action.triggered.connect(self.activate_zoom)
         
-#        self.toolbar = self.addToolBar('Zoom out')
-       
-        
         toggle_lin_log_action = QtGui.QAction('Log',self)
         toggle_lin_log_action.triggered.connect(self.logarithmic)
 
@@ -108,30 +125,10 @@ class ApplicationWindow(QtGui.QMainWindow):
         self.toolbar.addAction(zoom_out_action)
         self.toolbar.addAction(zoom_action)
         self.toolbar.addAction(toggle_lin_log_action)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-                
-                
-        
-        
-        
-        
-        
         self.main_widget    = QtGui.QWidget(self)
         l                   = QtGui.QHBoxLayout(self.main_widget)
         self.sc             = MyStaticMplCanvas(self.main_widget, width=100, height=6, dpi=100)
-#        self.zoom()
         self.slider         = QtGui.QSlider(self.main_widget)
-        
-        
-        
         l.addWidget(self.sc)
         l.addWidget(self.slider)
         self.main_widget.setFocus()
@@ -167,53 +164,31 @@ class ApplicationWindow(QtGui.QMainWindow):
     def file_load_spec(self):
         self.file_name  = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");           
         self.array,self.array_step, self.en, self.en_step, self.spectrum_time  = load_spec(self.file_name)
-        self.x_limits = [0,self.en_step[-1]]
-        self.y_limits = [0.1, np.max(self.array)*1.2 ]
+        self.x_limits   = [0,self.en_step[-1]]
+        self.y_limits   = [0.1, np.max(self.array)*1.2 ]
         self.draw_spectrums()
-#        x = np.arange(len(self.array))
-#        self.sc.axes.step(x,self.array,c=color_hist)#TODO: Make sure the step setup is okey! 
-#        self.sc.draw()
+
         
     def file_load_background(self):
-        self.file_name_bg      = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");    
-        self.bg_spec,self.bg_time          = load_spec(self.file_name_bg)
-        self.ymax           = np.max(self.bg_spec)      
+        self.file_name_bg           = QtGui.QFileDialog.getOpenFileName(self,"Load Spectrum File", "/home","Spectrum Files (*.chn *.bin)");    
+        self.bg_spec, self.bg_time  = load_spec(self.file_name_bg)
+        self.ymax                   = np.max(self.bg_spec)      
         self.draw_spectrums()
         
     def draw_spectrums(self):     
         if hasattr(self,'bg_spec') and hasattr(self,'array')  :
-            x_bg = np.arange(len(self.bg_spec))
+            x_bg        = np.arange(len(self.bg_spec))
             time_factor = self.spectrum_time/float(self.bg_time)
             self.sc.axes.step(x_bg,1.2*time_factor*self.bg_spec,c=color_bg_hist)#TODO: Make sure the step setup is okey! 
             self.sc.axes.hold(True)
-  
-   
             print self.bg_time
         if hasattr(self,'array') :  
             self.sc.axes.step(self.en_step,self.array_step,c=color_hist)#TODO: Make sure the step setup is okey! 
             print self.spectrum_time
-           #self.sc.axes.hold(False)
-#       try: 
-#           
-#           self.sc.axes.step(x,self.array-self.bg_spec,c='g')
-#       except:
-#           print "Did not work"
         self.sc.axes.set_xlim(self.x_limits[0],self.x_limits[1])
         self.sc.axes.set_ylim(self.y_limits[0], self.y_limits[1])        
         self.sc.draw()
 
-       
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
     def activate_zoom(self): 
         #TODO: Draw rectangle when zooming   
         self.cid_click = self.sc.mpl_connect('button_press_event', self.on_click)
@@ -250,33 +225,14 @@ class ApplicationWindow(QtGui.QMainWindow):
         self.sc.axes.scatter(self.en[self.rois], self.array[self.rois],marker='x',c='r',s=40)
         self.draw_spectrums()
         
-#    def x_from_en(self,energies):
-#        exes = np.zeros(len(energies),dtype=np.int16)
-#        for i, en in enumerate(energies):
-#            p = self.
-#            spec_obj.en_slope/spec_obj.en_quad
-#            q = (spec_obj.en_zero_inter - en)/spec_obj.en_quad
-#            a = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
-#            if a <= spec_obj.no_channels:
-#                exes[i] = int( np.round( -p/2 -np.sqrt(p**2/4 -q)))
-#            
-#        return exes
-
-    def fit_peak(self, en_low=500, en_high=520):
+    def fit_peak(self, en_low, en_high):
         rang = np.linspace(en_low,en_high)
         plt.figure(3)
-        
-
-        #plt.step(rang,spec_obj.hist_array[rang], c=color_hist)
         plt.scatter(rang,self.array[rang])
         plt.ylim(ymin=1)
         print fit_peak.fit_the_peak(rang,self.array[rang])
         coeff, var_matrix, hist_fit = fit_peak.fit_the_peak(rang,self.array[rang])
         plt.plot(rang, hist_fit)
-        
-        
-        zero_crossing = 300-1.75*2220
-#        plt.plot(rang,en[rang]*1.75 + zero_crossing)
         plt.show()
         
         
