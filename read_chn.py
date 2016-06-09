@@ -11,7 +11,7 @@ but also has a stand alone feature which writes out a textfile with the
 spectrum data. To be used in other source code, a general use case could be 
 getting the histogram data. The code for doing this could look like: 
 
-import read_chn3 as rc
+import read_chn as rc
 filename = <spectrum_name>.Chn
 spec_obj = rc.gamma_data(filename)
 hist_data = spec_obj.hist_array
